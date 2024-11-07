@@ -101,6 +101,7 @@ pub const Entry = struct {
             .int => ptr.* = try std.fmt.parseInt(T, value, 10),
             .float => ptr.* = try std.fmt.parseFloat(T, value),
             .bool => ptr.* = if (std.mem.eql(u8, value, "true")) true else if (std.mem.eql(u8, value, "false")) false else return error.InvalidBool,
+            .@"enum" => ptr.* = std.meta.stringToEnum(T, value) orelse return error.InvalidEnum,
             .optional => return set(allocator, std.meta.Child(T), ptr, value),
             .array => {
                 var iter = std.mem.tokenizeScalar(u8, value, ' ');
