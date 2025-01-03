@@ -51,11 +51,6 @@ pub const Entry = struct {
     key: []const u8,
     value: ?[]const u8,
 
-    pub const UnpackOptions = struct {
-        blacklist: []const []const u8 = &.{},
-        whitelist: []const []const u8 = &.{},
-    };
-
     pub fn unpack(self: Entry, dest: anytype, comptime options: UnpackOptions) !void {
         const fields = if (@TypeOf(dest) == type) @typeInfo(dest).@"struct".decls else @typeInfo(@TypeOf(dest.*)).@"struct".fields;
 
@@ -111,4 +106,56 @@ pub const Entry = struct {
             else => @compileError("unsupported type: " ++ @typeName(T)),
         }
     }
+};
+
+pub fn write(values: anytype, writer: anytype, comptime options: UnpackOptions) !void {
+    const fields = if (@TypeOf(values) == type) @typeInfo(values).@"struct".decls else @typeInfo(@TypeOf(values)).@"struct".fields;
+
+    inline for (fields) |field| {
+        const value = @field(values, field.name);
+        var ok = true;
+
+        switch (@typeInfo(@TypeOf(value))) {
+            .@"fn", .type => continue,
+            .optional => ok = (value != null),
+            else => {},
+        }
+
+        for (options.blacklist) |item| {
+            if (std.mem.eql(u8, item, field.name)) continue;
+        }
+
+        if (options.whitelist.len > 0) ok: {
+            for (options.whitelist) |item| {
+                if (std.mem.eql(u8, item, field.name)) break :ok;
+            }
+            continue;
+        }
+
+        if (ok) {
+            try writer.print("{s} = ", .{field.name});
+            try writeEntry(value, writer);
+            try writer.writeByte('\n');
+        }
+    }
+}
+
+fn writeEntry(value: anytype, writer: anytype) !void {
+    const T = @TypeOf(value);
+    switch (@typeInfo(T)) {
+        .pointer => try writer.print("{s}", .{value}),
+        .int, .float, .bool => try writer.print("{}", .{value}),
+        .@"enum" => try writer.print("{s}", .{@tagName(value)}),
+        .array => {
+            try writer.print("{}", .{value[0]});
+            for (value[1..]) |elem| try writer.print(" {}", .{elem});
+        },
+        .optional => try writeEntry(value.?, writer),
+        else => @compileError("unsupported type: " ++ @typeName(T)),
+    }
+}
+
+pub const UnpackOptions = struct {
+    blacklist: []const []const u8 = &.{},
+    whitelist: []const []const u8 = &.{},
 };
